@@ -20,9 +20,7 @@
   },
   "RMQ": {
     "name": "臺中國際機場",
-    "departureInternational": "https://www.tca.gov.tw/cht/index.php?act=fids&code=international_l",
-    "arrivalInternational": "https://www.tca.gov.tw/cht/index.php?act=fids&code=international_a",
-    "departureDomestic": "https://www.tca.gov.tw/cht/index.php?act=fids&code=domestic_l",
-    "arrivalDomestic": "https://www.tca.gov.tw/cht/index.php?act=fids&code=domestic_a"
+    "api": "https://www.tca.gov.tw/cht/index.php?act=fids&code=api_departure_arrival",
+    "note": "2026 新版 FIDS API，需帶 airFlyIO/airFlyLine/airFlyDate；舊 index.php?code=international_* 已改回傳 HTML"
   }
 }

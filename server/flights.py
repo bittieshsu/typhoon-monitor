@@ -305,30 +305,46 @@ def _tpe_direction(raw: str) -> str:
     return "unknown"
 
 
+def _strip_html_text(value: Any) -> str:
+    text = _first(value)
+    if not text:
+        return ""
+    import re
+
+    return re.sub(r"<[^>]+>", "", text).strip()
+
+
 def _normalize_tca_style(airport: str, raw: dict[str, Any], direction: str) -> dict[str, Any]:
-    """高雄、臺中機場（小寫 camelCase JSON）。"""
+    """高雄、臺中機場（小寫 camelCase JSON；臺中 2026 新版 API 欄位相容）。"""
     status_text = _first(raw.get("airFlyStatus"), raw.get("airFlyDelayCause"))
-    airline_code = _first(raw.get("airLineCode"), raw.get("airLineIATA"))
+    airline_code = _first(raw.get("airLineCode"), raw.get("airLineIATA"), raw.get("AirLineIATA"))
     scheduled = _first(
+        raw.get("scheduleTime"),
         raw.get("expectTime"),
         raw.get("expectDepartureTime"),
         raw.get("expectArrivalTime"),
     )
     estimated = _first(
+        raw.get("actualTime"),
         raw.get("realTime"),
         raw.get("realDepartureTime"),
         raw.get("realArrivalTime"),
     )
+    opponent = _first(raw.get("opponentPort"))
+    destination = _first(raw.get("goalAirportName")) or (opponent if direction == "departure" else "")
+    origin = _first(raw.get("upAirportName")) or (opponent if direction == "arrival" else "")
+    airline = _first(raw.get("airLineName")) or _strip_html_text(raw.get("mainAirlineHtml"))
     return {
         "airport": airport,
         "direction": direction,
         "flightNo": _compose_flight_no(airline_code, raw.get("airLineNum")),
         "airlineCode": airline_code,
-        "airline": _first(raw.get("airLineName")),
-        "destination": _first(raw.get("goalAirportName")),
-        "origin": _first(raw.get("upAirportName")),
+        "airline": airline,
+        "destination": destination,
+        "origin": origin,
         "scheduledTime": _format_time(scheduled),
         "estimatedTime": _format_time(estimated),
+        "flightDate": _parse_flight_date(raw.get("flightDate"), raw.get("airFlyDate")),
         "terminal": "",
         "gate": _first(raw.get("airBoardingGate")),
         "aircraftType": _first(raw.get("airPlaneType")),
@@ -668,6 +684,24 @@ async def fetch_airport_flights(code: str, config: dict[str, Any]) -> list[dict[
         return flights
 
     if code == "RMQ":
+        api_base = config.get("api")
+        if api_base:
+            # 臺中新版 API：需帶日期／出抵達／航線別；只抓今天與明天
+            today = datetime.now(TAIWAN_TZ).date()
+            sep = "&" if "?" in api_base else "?"
+            for offset in (0, 1):
+                flight_date = (today + timedelta(days=offset)).isoformat()
+                for line in ("1", "2"):  # 1=國際及兩岸 2=國內
+                    for io, direction in (("1", "departure"), ("2", "arrival")):
+                        url = (
+                            f"{api_base}{sep}airFlyIO={io}&airFlyLine={line}"
+                            f"&airFlyDate={flight_date}&airLineCode="
+                        )
+                        payload = await _fetch_json(url)
+                        for row in _extract_rows(payload):
+                            row = {**row, "flightDate": flight_date}
+                            flights.append(normalize_flight(code, row, direction))
+            return flights
         await add_from(config.get("departureInternational"), "departure")
         await add_from(config.get("arrivalInternational"), "arrival")
         await add_from(config.get("departureDomestic"), "departure")
