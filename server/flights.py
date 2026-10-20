@@ -687,8 +687,10 @@ async def fetch_airport_flights(code: str, config: dict[str, Any]) -> list[dict[
         api_base = config.get("api")
         if api_base:
             # 臺中新版 API：需帶日期／出抵達／航線別；只抓今天與明天
+            # 8 個組合並行抓取（雲端逐一抓容易 ReadTimeout），個別失敗不整批失敗
             today = datetime.now(TAIWAN_TZ).date()
             sep = "&" if "?" in api_base else "?"
+            combos: list[tuple[str, str, str]] = []  # (url, direction, flight_date)
             for offset in (0, 1):
                 flight_date = (today + timedelta(days=offset)).isoformat()
                 for line in ("1", "2"):  # 1=國際及兩岸 2=國內
@@ -697,10 +699,25 @@ async def fetch_airport_flights(code: str, config: dict[str, Any]) -> list[dict[
                             f"{api_base}{sep}airFlyIO={io}&airFlyLine={line}"
                             f"&airFlyDate={flight_date}&airLineCode="
                         )
-                        payload = await _fetch_json(url)
-                        for row in _extract_rows(payload):
-                            row = {**row, "flightDate": flight_date}
-                            flights.append(normalize_flight(code, row, direction))
+                        combos.append((url, direction, flight_date))
+
+            async def _fetch_combo(url: str) -> Any:
+                return await _fetch_json(url)
+
+            results = await asyncio.gather(
+                *(_fetch_combo(url) for url, _dir, _date in combos),
+                return_exceptions=True,
+            )
+            errors: list[str] = []
+            for (url, direction, flight_date), result in zip(combos, results):
+                if isinstance(result, Exception):
+                    errors.append(f"{direction}/{flight_date}: {type(result).__name__}")
+                    continue
+                for row in _extract_rows(result):
+                    row = {**row, "flightDate": flight_date}
+                    flights.append(normalize_flight(code, row, direction))
+            if not flights:
+                raise RuntimeError("; ".join(errors) or "臺中航班資料為空")
             return flights
         await add_from(config.get("departureInternational"), "departure")
         await add_from(config.get("arrivalInternational"), "arrival")
