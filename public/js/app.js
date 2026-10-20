@@ -72,10 +72,18 @@ function formatFlightTimeLine(f) {
 
 function initMap() {
   map = L.map("map", { zoomControl: true }).setView([20, 125], 5);
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-    attribution: "&copy; OpenStreetMap &copy; CARTO",
-    maxZoom: 18,
-  }).addTo(map);
+  // CARTO basemaps 已改為需 API Key，改用 Esri World Dark Gray（免金鑰）
+  L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+    {
+      attribution: "Esri, HERE, Garmin, OpenStreetMap contributors",
+      maxZoom: 16,
+    }
+  ).addTo(map);
+  L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+    { maxZoom: 16 }
+  ).addTo(map);
 
   trackLayer = L.layerGroup().addTo(map);
   forecastLayer = L.layerGroup().addTo(map);
